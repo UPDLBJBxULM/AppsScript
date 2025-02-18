@@ -77,8 +77,8 @@ function generatePdfReportFromDropdown() {
       throw new Error('Data tidak ditemukan untuk Judul Laporan A/R: ' + reportTitleDropdown);
     }
 
-    const mainReportData = prepareMainReportData(filteredDataRow, headerColumnIndexMap);
-    validateReportData(mainReportData);
+    const mainReportData = prepareMainReportData(filteredDataRow, headerColumnIndexMap); // FIX: Gunakan nama fungsi yang benar
+    validateReportData(mainReportData); // FIX: Gunakan nama fungsi yang benar
 
     const newSheetName = reportTitleDropdown.replace(/[^a-zA-Z0-9]/g, '').substring(0, 30);
     let existingSheet = spreadsheet.getSheetByName(newSheetName);
@@ -88,40 +88,59 @@ function generatePdfReportFromDropdown() {
     newSheet = sourceSheets.templateSheet.copyTo(spreadsheet).setName(newSheetName);
 
     // Gunakan planId yang diekstrak untuk "Nomor" dan reportTitleDropdown untuk nama sheet dan PDF
-    applyBasicTemplateUpdates(newSheet, mainReportData, planId);
-    if (mainReportData.detailEntries.length > 0) {
-      processReportDetailEntries(newSheet, mainReportData.detailEntries);
+    applyBasicTemplateUpdates(newSheet, mainReportData, planId, sourceSheets.dataSheet, headerColumnIndexMap);
+    if (mainReportData.detailEntries.length > 0) { // FIX: Gunakan nama variabel yang benar
+      processReportDetailEntries(newSheet, mainReportData.detailEntries); // FIX: Gunakan nama fungsi yang benar
     }
 
     const startTime = new Date().getTime();
-    const pdfFile = generateAndSavePdfReport(newSheet, reportTitleDropdown, mainReportData);
-    updatePdfLinkInSheet(spreadsheet, pdfFile);
+    const pdfFile = generateAndSavePdfReport(newSheet, reportTitleDropdown, mainReportData); // FIX: Gunakan nama fungsi yang benar
+    updatePdfLinkInSheet(spreadsheet, pdfFile); // FIX: Gunakan nama fungsi yang benar
 
     const endTime = new Date().getTime();
-    Logger.log(`Execution time: ${(endTime - startTime) / 1000} seconds`);
+    Logger.log(`Execution time: ${(endTime - startTime) / 1000} seconds`); // Waktu eksekusi
 
   } catch (error) {
-    Logger.log('Error: ' + error.toString());
-    SpreadsheetApp.getUi().alert('Error: ' + error.message);
+    Logger.log('Error: ' + error.toString()); // Error:
+    SpreadsheetApp.getUi().alert('Error: ' + error.message); // Error:
     throw error;
   } finally {
-    cleanupTemporarySheetAndReset(spreadsheet, newSheet);
+    cleanupTemporarySheetAndReset(spreadsheet, newSheet); // FIX: Gunakan nama fungsi yang benar
   }
 }
 
 /**
  * Menerapkan update dasar pada sheet template laporan.
  */
-function applyBasicTemplateUpdates(targetSheet, reportData, planId) {
+function applyBasicTemplateUpdates(targetSheet, reportData, planId, dataSheet, headerColumnIndexMap) {
+  // Ambil semua data dari sheet GENERATEPDF sekali saja di luar loop updates untuk efisiensi
+  const allDataGeneratePDF = dataSheet.getDataRange().getValues();
+  let jabatanRequestorFromSheet = '';
+
+  // Cari Jabatan Requestor berdasarkan Nama Requestor di sheet GENERATEPDF
+  for (let i = 3; i < allDataGeneratePDF.length; i++) {
+    const namaRequestorSheet = allDataGeneratePDF[i][headerColumnIndexMap.get('Nama Requestor')];
+    if (namaRequestorSheet && namaRequestorSheet.toString().trim() === reportData.requestorName.trim()) {
+      jabatanRequestorFromSheet = allDataGeneratePDF[i][5]; // F kolom dari data (indeks 5), yang merupakan kolom Jabatan Requestor
+      if (jabatanRequestorFromSheet) {
+        jabatanRequestorFromSheet = jabatanRequestorFromSheet.toString().trim();
+      } else {
+        jabatanRequestorFromSheet = ''; // Handle kasus jika Jabatan Requestor kosong
+      }
+      break;
+    }
+  }
+
+
   const updates = [
-    { range: "A6:N6", value: `Pada Hari, Tanggal ${reportData.endDateFormattedId}`, fontSize: 13 },
-    { range: "A14:P14", value: reportData.reportTitleAr, fontSize: 16 },
-    { range: "F10:K10", value: reportData.requestorName, fontSize: 13 },
-    { range: "F9", value: reportData.organizationalUnit, fontSize: 13 },
-    { range: "I16", value: reportData.organizationalUnit, fontSize: 13 },
-    { range: "I17", value: reportData.endDateFormattedId, fontSize: 13 },
-    { range: "I18", value: planId, fontSize: 13 },
-    { range: "J19:K19", value: reportData.totalNominal, fontSize: 13, format: '#,##0' }
+    { range: "A6:N6", value: `Pada Hari, Tanggal ${reportData.endDateFormattedId}`, fontSize: 13 }, // Menetapkan tanggal dan hari
+    { range: "A14:P14", value: reportData.reportTitleAr, fontSize: 16 }, // Judul laporan
+    { range: "F10:K10", value: reportData.requestorName, fontSize: 13 }, // Nama pemohon
+    { range: "F9", value: jabatanRequestorFromSheet, fontSize: 13 }, // FIX: Gunakan jabatanRequestorFromSheet untuk F9, gunakan nama variabel yang benar
+    { range: "I16", value: reportData.organizationalUnit, fontSize: 13 }, // Unit organisasi
+    { range: "I17", value: reportData.endDateFormattedId, fontSize: 13 }, // Tanggal akhir (diulang)
+    { range: "I18", value: planId, fontSize: 13 }, // ID Rencana
+    { range: "J19:K19", value: reportData.totalNominal, fontSize: 13, format: '#,##0' } // Nominal total
   ];
 
   updates.forEach(({ range, value, fontSize, format }) => {
@@ -163,6 +182,9 @@ function processReportDetailEntries(targetSheet, detailEntries) {
       .setFontSize(13)
       .setVerticalAlignment("middle");
 
+    Logger.log("Data setelah setValues di sheet:"); // Tambahkan log ini
+    Logger.log(targetSheet.getRange(dataStartRow, 1, dataToInsert.length, 14).getValues()); // Tambahkan log ini
+
     targetSheet.getRange(dataStartRow, 9, dataToInsert.length, 1)
       .setNumberFormat('#,##0');
 
@@ -183,7 +205,7 @@ function processReportDetailEntries(targetSheet, detailEntries) {
 /**
  * Mempersiapkan data utama laporan dari baris data input.
  */
-function prepareMainReportData(dataRow, headerColumnIndexMap) {
+function prepareMainReportData(dataRow, headerColumnIndexMap) { // FIX: Nama fungsi yang benar
   const splitAndTrim = (str) => str.toString().split('||').map(item => item.trim());
   const selectedDropdownValue = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('GENERATEPDF').getRange('A1').getValue().toString().trim();
   const planId = selectedDropdownValue.split('_').pop();
@@ -195,7 +217,7 @@ function prepareMainReportData(dataRow, headerColumnIndexMap) {
     organizationalUnit: dataRow[headerColumnIndexMap.get('Organizational Unit')],
     totalNominal: dataRow[headerColumnIndexMap.get('Nominal Total')],
     planId: planId,
-    detailEntries: createReportDetailEntries(
+    detailEntries: createReportDetailEntries( // FIX: Nama fungsi yang benar
       splitAndTrim(dataRow[headerColumnIndexMap.get('Tanggal Input')]),
       splitAndTrim(dataRow[headerColumnIndexMap.get('Nominal')]),
       splitAndTrim(dataRow[headerColumnIndexMap.get('Uraian')]),
@@ -207,16 +229,16 @@ function prepareMainReportData(dataRow, headerColumnIndexMap) {
 /**
  * Validasi data utama laporan.
  */
-function validateReportData(reportData) {
-  if (!reportData.reportTitleAr || !reportData.endDateFormattedId) {
-    throw new Error('Data wajib tidak lengkap: Judul Laporan dan Tanggal Akhir harus diisi.');
+function validateReportData(mainReportData) { // FIX: Nama fungsi yang benar
+  if (!mainReportData.reportTitleAr || !mainReportData.endDateFormattedId) {
+    throw new Error('Data wajib tidak lengkap: Judul Laporan dan Tanggal Akhir harus diisi.'); // Data wajib tidak lengkap: Judul Laporan dan Tanggal Akhir harus diisi.
   }
 }
 
 /**
  * Membuat array entri detail laporan.
  */
-function createReportDetailEntries(dateStrings, nominalStrings, descriptionStrings, accountStrings) {
+function createReportDetailEntries(dateStrings, nominalStrings, descriptionStrings, accountStrings) { // FIX: Nama fungsi yang benar
   const maxLength = Math.max(
     dateStrings.length,
     nominalStrings.length,
@@ -225,17 +247,17 @@ function createReportDetailEntries(dateStrings, nominalStrings, descriptionStrin
   );
 
   return Array(maxLength).fill().map((_, i) => ({
-    date: formatDateToIndonesian(dateStrings[i] || ''),
-    nominal: nominalStrings[i] || '',
-    description: descriptionStrings[i] || '',
-    account: accountStrings[i] || ''
+    date: formatDateToIndonesian(dateStrings[i] || ''), // Format tanggal, gunakan string kosong jika tidak ada
+    nominal: nominalStrings[i] || '', // Gunakan string kosong jika tidak ada nominal
+    description: descriptionStrings[i] || '', // Gunakan string kosong jika tidak ada deskripsi
+    account: accountStrings[i] || '' // Gunakan string kosong jika tidak ada account
   }));
 }
 
 /**
  * Menghasilkan file PDF dari sheet laporan dan menyimpannya ke Google Drive.
  */
-function generateAndSavePdfReport(reportSheet, reportId, reportData) {
+function generateAndSavePdfReport(reportSheet, reportTitleDropdown, mainReportData) { // FIX: Nama fungsi yang benar
   const spreadsheet = reportSheet.getParent();
   const pdfFolder = DriveApp.getFolderById(PDF_FOLDER_ID);
 
@@ -245,12 +267,12 @@ function generateAndSavePdfReport(reportSheet, reportId, reportData) {
   SpreadsheetApp.flush();
   Utilities.sleep(500);
 
-  Logger.log('Sheet activated and flushed in: ' + (new Date().getTime() - startTime) + ' ms');
+  Logger.log('Sheet activated and flushed in: ' + (new Date().getTime() - startTime) + ' ms'); // Sheet diaktifkan dan di-flush dalam:
 
   const pdfExportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.getId()}/export?` +
     `format=pdf&size=A4&portrait=true&fitw=true&gid=${reportSheet.getSheetId()}`;
 
-  Logger.log('PDF URL generated in: ' + (new Date().getTime() - startTime) + ' ms');
+  Logger.log('PDF URL generated in: ' + (new Date().getTime() - startTime) + ' ms'); // PDF URL dibuat dalam:
 
   const fetchOptions = {
     method: "GET",
@@ -259,15 +281,15 @@ function generateAndSavePdfReport(reportSheet, reportId, reportData) {
 
   const fetchStartTime = new Date().getTime();
   const response = UrlFetchApp.fetch(pdfExportUrl, fetchOptions);
-  Logger.log('PDF fetched in: ' + (new Date().getTime() - fetchStartTime) + ' ms');
+  Logger.log('PDF fetched in: ' + (new Date().getTime() - fetchStartTime) + ' ms'); // PDF di-fetch dalam:
 
   if (response.getResponseCode() !== 200) {
-    throw new Error('Gagal membuat file PDF');
+    throw new Error('Gagal membuat file PDF'); // Gagal membuat file PDF
   }
 
-  // Penamaan file PDF sekarang menggunakan Judul Laporan, Tanggal, dan ID Rencana (planId)
-  const formattedDateYyyyMmDd = convertIndonesianDateToYyyyMmDd(reportData.endDateFormattedId);
-  const pdfFileName = `${reportData.reportTitleAr}_${formattedDateYyyyMmDd}_${reportData.planId}`
+  // Penamaan file PDF, menggunakan judul laporan, tanggal, dan ID Rencana (planId)
+  const formattedDateYyyyMmDd = convertIndonesianDateToYyyyMmDd(mainReportData.endDateFormattedId);
+  const pdfFileName = `${mainReportData.reportTitleAr}_${formattedDateYyyyMmDd}_${mainReportData.planId}`
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '')
     .substring(0, 100)
@@ -275,43 +297,43 @@ function generateAndSavePdfReport(reportSheet, reportId, reportData) {
 
   const blobStartTime = new Date().getTime();
   const pdfBlob = response.getBlob().setName(pdfFileName);
-  Logger.log('Blob processed in: ' + (new Date().getTime() - blobStartTime) + ' ms');
+  Logger.log('Blob processed in: ' + (new Date().getTime() - blobStartTime) + ' ms'); // Blob diproses dalam:
 
   const saveStartTime = new Date().getTime();
   const pdfFileOnDrive = pdfFolder.createFile(pdfBlob);
-  Logger.log('File saved to Drive in: ' + (new Date().getTime() - saveStartTime) + ' ms');
+  Logger.log('File saved to Drive in: ' + (new Date().getTime() - saveStartTime) + ' ms'); // File disimpan ke Drive dalam:
 
   const endTime = new Date().getTime();
-  Logger.log('Total PDF generation time: ' + (endTime - startTime) + ' ms');
+  Logger.log('Total PDF generation time: ' + (endTime - startTime) + ' ms'); // Total waktu pembuatan PDF:
 
-  return pdfFileOnDrive;
+  return pdfFileOnDrive; // Kembalikan file PDF yang disimpan
 }
 
 /**
  * Update link PDF pada sheet 'GENERATEPDF' di kolom B2.
  */
-function updatePdfLinkInSheet(spreadsheet, pdfFile) {
+function updatePdfLinkInSheet(spreadsheet, pdfFile) { // FIX: Nama fungsi yang benar
   spreadsheet.getSheetByName('GENERATEPDF')
     .getRange('B2')
-    .setFormula(`=HYPERLINK("${pdfFile.getUrl()}", "${pdfFile.getName()}")`);
+    .setFormula(`=HYPERLINK("${pdfFile.getUrl()}", "${pdfFile.getName()}")`); // Set formula HYPERLINK untuk menampilkan link dan nama file
 }
 
 /**
  * Membersihkan sheet sementara yang dibuat dan reset sheet aktif ke 'GENERATEPDF'.
  */
-function cleanupTemporarySheetAndReset(spreadsheet, temporarySheet) {
+function cleanupTemporarySheetAndReset(spreadsheet, temporarySheet) { // FIX: Nama fungsi yang benar
   if (temporarySheet) {
-    Utilities.sleep(1);
+    Utilities.sleep(1); // Jeda singkat sebelum menghapus sheet
     try {
-      spreadsheet.deleteSheet(temporarySheet);
+      spreadsheet.deleteSheet(temporarySheet); // Hapus sheet sementara
     } catch (e) {
-      Logger.log('Error deleting temporary sheet: ' + e.toString());
+      Logger.log('Error deleting temporary sheet: ' + e.toString()); // Log error jika gagal menghapus sheet
     }
   }
-  const configSheet = spreadsheet.getSheetByName('GENERATEPDF');
+  const configSheet = spreadsheet.getSheetByName('GENERATEPDF'); // Mendapatkan sheet 'GENERATEPDF'
   if (configSheet) {
-    spreadsheet.setActiveSheet(configSheet);
-    configSheet.getRange('A1').activate();
+    spreadsheet.setActiveSheet(configSheet); // Set 'GENERATEPDF' sebagai sheet aktif
+    configSheet.getRange('A1').activate(); // Pilih cell A1 di 'GENERATEPDF'
   }
 }
 
@@ -328,44 +350,57 @@ const MONTH_INDONESIAN_TO_NUMBER_MAP = {
  * Format string tanggal ke format tanggal Indonesia (DD Bulan YYYY).
  * Menerima berbagai format string tanggal dan mencoba memparsnya.
  */
-function formatDateToIndonesian(dateString) {
+function formatDateToIndonesian(dateString) { // FIX: Nama fungsi yang benar
   const indonesianMonthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
     "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
   try {
     let date;
 
+    // Coba parsing langsung menggunakan Date
     date = new Date(dateString);
 
+    // Jika parsing langsung gagal, coba split berdasarkan titik (format DD.MM.YYYY)
     if (isNaN(date.getTime())) {
-      const [dayMonthYearPart, timePart] = dateString.split(' ');
-      const [day, month, year] = dayMonthYearPart.split('.').map(Number);
-      date = new Date(year, month - 1, day);
+      const [dayMonthYearPart, timePart] = dateString.split(' '); // Split tanggal dan waktu jika ada
+      const [day, month, year] = dayMonthYearPart.split('.').map(Number); // Split hari, bulan, tahun dan konversi ke number
+      date = new Date(year, month - 1, day); // Bulan di JavaScript dimulai dari 0 (Januari)
     }
 
 
-    if (!isNaN(date.getTime())) {
-      return `${String(date.getDate()).padStart(2, '0')} ${indonesianMonthNames[date.getMonth()]} ${date.getFullYear()}`;
+    if (!isNaN(date.getTime())) { // Pastikan tanggal berhasil di-parse
+      return `${String(date.getDate()).padStart(2, '0')} ${indonesianMonthNames[date.getMonth()]} ${date.getFullYear()}`; // Format ke DD Bulan YYYY
     }
 
-    return dateString;
+    return dateString; // Kembalikan string asli jika parsing gagal
   } catch (error) {
-    Logger.log(`Error formatting date: ${error}`);
-    return dateString;
+    Logger.log(`Error memformat tanggal: ${error}`); // Log error jika terjadi kesalahan saat formatting
+    return dateString; // Kembalikan string asli jika terjadi error
   }
 }
 
 /**
  * Konversi tanggal format Indonesia (DD Bulan YYYY) ke format YYYYMMDD.
  */
-function convertIndonesianDateToYyyyMmDd(indonesianDateStr) {
+function convertIndonesianDateToYyyyMmDd(indonesianDateStr) { // FIX: Nama fungsi yang benar
   try {
-    const [day, month, year] = indonesianDateStr.split(' ');
-    const monthNumber = MONTH_INDONESIAN_TO_NUMBER_MAP[month];
-    if (!monthNumber) throw new Error('Bulan tidak valid: ' + month);
-    return `${year}${monthNumber}${String(day).padStart(2, '0')}`;
+    const [day, month, year] = indonesianDateStr.split(' '); // Split string tanggal menjadi hari, bulan, tahun
+    const monthNumber = MONTH_INDONESIAN_TO_NUMBER_MAP[month]; // Dapatkan nomor bulan dari mapping
+    if (!monthNumber) throw new Error('Bulan tidak valid: ' + month); // Throw error jika bulan tidak valid
+    return `${year}${monthNumber}${String(day).padStart(2, '0')}`; // Format ke YYYYMMDD
   } catch (e) {
-    Logger.log('Date conversion error: ' + e.toString());
-    throw new Error('Format tanggal tidak valid: ' + indonesianDateStr);
+    Logger.log('Date conversion error: ' + e.toString()); // Log error konversi tanggal
+    throw new Error('Format tanggal tidak valid: ' + indonesianDateStr); // Throw error format tanggal tidak valid
   }
+}
+
+/**
+ * Fungsi pemicu onOpen otomatis berjalan saat spreadsheet dibuka.
+ * Menambahkan menu kustom "GeneratePDF" ke menu bar spreadsheet.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('GeneratePDF ✨📄') // Membuat menu dengan nama "GeneratePDF"
+    .addItem('Generate PDF 📄⬇️ ', 'generatePdfReportFromDropdown') // Menambahkan item menu "Generate PDF" yang menjalankan fungsi generatePdfReportFromDropdown
+    .addToUi(); // Menambahkan menu ke UI spreadsheet.
 }
