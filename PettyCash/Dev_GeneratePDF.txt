@@ -407,7 +407,7 @@ function processTemplatePagesForHal(templateSheet, links, pageNameSuffix, spread
     try {
       // Sisipkan gambar dan atur ukurannya menjadi 400x400 piksel
       const image = newSheet.insertImage(imageUrl, targetColumn, currentRow);
-      image.setWidth(390).setHeight(390);
+      image.setWidth(400).setHeight(400);
 
       // Opsional: Sesuaikan posisi gambar agar lebih presisi (jika diperlukan)
       // Misalnya, geser sedikit ke kanan atau ke bawah dalam sel

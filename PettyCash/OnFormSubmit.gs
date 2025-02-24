@@ -15,7 +15,7 @@ function onFormSubmit(e) {
   var lastRow = sheet.getLastRow();
   
   // Tandai kolom J (status) pada baris terbaru dengan "PENDING"
-  sheet.getRange(lastRow, 10).setValue("PENDING"); // Kolom J = 10
+  sheet.getRange(lastRow, 11).setValue("PENDING"); // Kolom K = 11
   
   Logger.log("Baris baru ditandai sebagai PENDING di sheet RENCANA.");
   

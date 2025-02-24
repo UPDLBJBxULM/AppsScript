@@ -39,10 +39,10 @@ function processQueue() {
         break;
       }
 
-      var dataRange = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+      var dataRange = sheet.getRange(2, 1, lastRow - 1, 11).getValues(); // Dapatkan data A-K
       var pendingIndex = -1;
       for (var i = 0; i < dataRange.length; i++) {
-        if (dataRange[i][9] === "PENDING") {
+        if (dataRange[i][10] === "PENDING") { // Cari di kolom K
           pendingIndex = i;
           break;
         }
@@ -75,9 +75,30 @@ function processQueue() {
       // Ambil nomor tambahan dari sheet reportTO
       var reportNum1 = ''; // KEU
       var reportNum2 = ''; // MUPDL
+      var reportNum3YAN = ''; // Accountable YAN
+      var reportNum4K3L = ''; // Accountable K3L
       if (reportSheet) {
         reportNum1 = formatPhone(reportSheet.getRange("D8").getValue());
         reportNum2 = formatPhone(reportSheet.getRange("D9").getValue());
+
+        // Ambil data terakhir dari sheet RENCANA kolom E
+        var lastRowRencana = sheet.getLastRow();
+        var accountableBag = sheet.getRange(lastRowRencana, 5).getValue();
+
+        // Ambil string pembanding dari sheet Publikasi (misalnya di kolom F1 dan F2)
+        var yanConditionString = reportSheet.getRange("C10").getValue(); // string YAN di C10
+        var k3lConditionString = reportSheet.getRange("C11").getValue(); // string K3L di C11
+
+        reportNum3YAN = ''; // Inisialisasi sebagai nonaktif default
+        reportNum4K3L = ''; // Inisialisasi sebagai nonaktif default
+
+        if (accountableBag === yanConditionString) {
+          reportNum3YAN = formatPhone(reportSheet.getRange("D10").getValue()); // Aktifkan reportNum3YAN
+          // reportNum4K3L tetap nonaktif karena sudah diinisialisasi di atas
+        } else if (accountableBag === k3lConditionString) {
+          reportNum4K3L = formatPhone(reportSheet.getRange("D11").getValue()); // Aktifkan reportNum4K3L
+          // reportNum3YAN tetap nonaktif karena sudah diinisialisasi di atas
+        }
       }
 
       // Ambil LinkONTXT
@@ -91,8 +112,10 @@ function processQueue() {
       // Kumpulkan semua nomor ke dalam array dan gabungkan menjadi string comma-separated
       var targets = [];
       if (phone1) targets.push(phone1);
-      if (reportNum1) targets.push(reportNum1);
-      if (reportNum2) targets.push(reportNum2);
+      if (reportNum1) targets.push(reportNum1); // KEU
+      if (reportNum2) targets.push(reportNum2); // MUPDL
+      if (reportNum3YAN) targets.push(reportNum3YAN); // Accountable YAN
+      if (reportNum4K3L) targets.push(reportNum4K3L); // Accountable K3L
       var phoneNumber = targets.join(",");
 
       function calculateStartDate(date) {
@@ -149,7 +172,7 @@ function processQueue() {
         sheet.getRange(rowNum, 3).setValue(endDateAR);
         Logger.log("Pesan terkirim ke " + phoneNumber + ": " + response.getContentText());
 
-        sheet.getRange(rowNum, 10).setValue("SENT");
+        sheet.getRange(rowNum, 11).setValue("SENT");
       } catch (error) {
         Logger.log("Error saat mengirim pesan: " + error);
       }
