@@ -20,6 +20,7 @@ const PDF_EXPORT_OPTIONS = {
   gridlines: false,
   fzr: false
 };
+
 const MONTH_INDONESIAN_TO_NUMBER_MAP = {
   'Januari': '01', 'Februari': '02', 'Maret': '03', 'April': '04',
   'Mei': '05', 'Juni': '06', 'Juli': '07', 'Agustus': '08',
@@ -42,7 +43,7 @@ function generatePdfReportFromDropdown() {
     // Validate and retrieve source sheets
     const sourceSheets = getSourceSheets(spreadsheet);
     const { reportTitleDropdown, baseReportTitleDropdown, planId } = getDropdownValues(sourceSheets.dataSheet);
-    const { headers, headerColumnIndexMap, filteredDataRow } = getReportData(sourceSheets.dataSheet, baseReportTitleDropdown);
+    const { headers, headerColumnIndexMap, filteredDataRow } = getReportData(sourceSheets.dataSheet, baseReportTitleDropdown, planId);
 
     // Prepare report data
     const mainReportData = prepareMainReportData(filteredDataRow, headerColumnIndexMap, planId);
@@ -58,8 +59,27 @@ function generatePdfReportFromDropdown() {
     // Generate PDFs
     const startTime = new Date().getTime();
     pdfBlobHal1 = generateAndSavePdfReport(newSheet, reportTitleDropdown, mainReportData, true, 'Hal1');
-    pdfFileHal2 = generatePdfReportHalPage(spreadsheet, baseReportTitleDropdown, sourceSheets, TEMPLATE_HAL2_NAME, 'Hal2', 'Scan Nota', 'E2');
-    pdfFileHal3 = generatePdfReportHalPage(spreadsheet, baseReportTitleDropdown, sourceSheets, TEMPLATE_HAL3_NAME, 'Hal3', 'Gambar Barang', 'F2');
+    pdfFileHal2 = generatePdfReportHalPage(
+      spreadsheet,
+      baseReportTitleDropdown,
+      planId, // Kirim planId
+      sourceSheets,
+      TEMPLATE_HAL2_NAME,
+      'Hal2',
+      'Scan Nota',
+      'B3'
+    );
+
+    pdfFileHal3 = generatePdfReportHalPage(
+      spreadsheet,
+      baseReportTitleDropdown,
+      planId, // Kirim planId
+      sourceSheets,
+      TEMPLATE_HAL3_NAME,
+      'Hal3',
+      'Gambar Barang',
+      'B4'
+    );
 
     // Update PDF links in sheet
     updatePdfLinks(spreadsheet, pdfBlobHal1, pdfFileHal2, pdfFileHal3);
@@ -101,55 +121,92 @@ function getDropdownValues(dataSheet) {
   const selectedDropdownValue = allData[0][0].toString().trim();
   if (!selectedDropdownValue) throw new Error('Please select a Report Title from the dropdown.');
 
-  return {
-    reportTitleDropdown: selectedDropdownValue,
-    baseReportTitleDropdown: selectedDropdownValue.split('_').shift(),
-    planId: selectedDropdownValue.split('_').pop()
-  };
+  const parts = selectedDropdownValue.split('_');
+  const baseReportTitleDropdown = parts[0];
+  const planId = parts[parts.length - 1];
+
+  return { reportTitleDropdown: selectedDropdownValue, baseReportTitleDropdown, planId };
 }
 
 // Retrieve report data
-function getReportData(dataSheet, baseReportTitleDropdown) {
+function getReportData(dataSheet, baseReportTitleDropdown, planId) {
   const allData = dataSheet.getDataRange().getValues();
-  const headers = allData[2];
+  const headers = allData[4];
   const headerColumnIndexMap = new Map(headers.map((header, index) => [header, index]));
 
+  // Validate required columns
+  const requiredColumns = ['Judul Laporan A/R', 'ID Rencana'];
+  requiredColumns.forEach(column => {
+    if (!headerColumnIndexMap.has(column)) {
+      throw new Error(`Missing required column: ${column}`);
+    }
+  });
+
   const filteredDataRow = allData.find((dataRow, rowIndex) => {
-    if (rowIndex > 2) {
+    if (rowIndex > 4) {
       const reportTitleValue = dataRow[headerColumnIndexMap.get('Judul Laporan A/R')].toString().trim();
-      return reportTitleValue === baseReportTitleDropdown;
+      const idRencanaValue = dataRow[headerColumnIndexMap.get('ID Rencana')].toString().trim();
+      return reportTitleValue === baseReportTitleDropdown && idRencanaValue === planId;
     }
     return false;
   });
 
-  if (!filteredDataRow) throw new Error(`Data not found for Report Title: ${baseReportTitleDropdown}`);
+  if (!filteredDataRow) {
+    throw new Error(`Data not found for Report Title: "${baseReportTitleDropdown}" and Plan ID: "${planId}"`);
+  }
 
   return { headers, headerColumnIndexMap, filteredDataRow };
 }
 
 // Create new sheet from template
 function createNewSheet(spreadsheet, templateSheet, reportTitleDropdown) {
-  const newSheetName = reportTitleDropdown.replace(/[^a-zA-Z0-9]/g, '').substring(0, 30);
+  const newSheetName = reportTitleDropdown
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .substring(0, 30);
   let existingSheet = spreadsheet.getSheetByName(newSheetName);
   if (existingSheet) spreadsheet.deleteSheet(existingSheet);
   return templateSheet.copyTo(spreadsheet).setName(newSheetName);
 }
 
 // Generate PDF for Hal2 or Hal3
-function generatePdfReportHalPage(spreadsheet, baseReportTitleDropdown, sourceSheets, templateHalName, pageNameSuffix, linkColumnName, linkCellRange) {
+// Modifikasi fungsi generatePdfReportHalPage
+function generatePdfReportHalPage(
+  spreadsheet,
+  baseReportTitleDropdown,
+  planId, // Tambahkan parameter planId
+  sourceSheets,
+  templateHalName,
+  pageNameSuffix,
+  linkColumnName,
+  linkCellRange
+) {
   const sourceSheetsLocal = {
     rekapRealisasiSheet: sourceSheets.rekapRealisasiSheet,
     templateHalSheet: spreadsheet.getSheetByName(templateHalName)
   };
 
   try {
-    const { links, filteredRekapRealisasiRow } = getLinksForHalPage(sourceSheetsLocal.rekapRealisasiSheet, baseReportTitleDropdown, linkColumnName);
+    // Perubahan di sini: tambahkan planId
+    const { links, filteredRekapRealisasiRow } = getLinksForHalPage(
+      sourceSheetsLocal.rekapRealisasiSheet,
+      baseReportTitleDropdown,
+      planId, // Kirim planId ke fungsi
+      linkColumnName
+    );
+
     if (!filteredRekapRealisasiRow || links.length === 0) {
       Logger.log(`No data or links found for ${pageNameSuffix}`);
       return null;
     }
 
-    const pdfFilesHal = processTemplatePagesForHal(sourceSheetsLocal.templateHalSheet, links, pageNameSuffix, spreadsheet, baseReportTitleDropdown);
+    const pdfFilesHal = processTemplatePagesForHal(
+      sourceSheetsLocal.templateHalSheet,
+      links,
+      pageNameSuffix,
+      spreadsheet,
+      baseReportTitleDropdown
+    );
+
     return pdfFilesHal && pdfFilesHal.length > 0 ? pdfFilesHal[0] : null;
   } catch (error) {
     Logger.log(`Error generating PDF for ${pageNameSuffix}: ${error.message}`);
@@ -158,34 +215,52 @@ function generatePdfReportHalPage(spreadsheet, baseReportTitleDropdown, sourceSh
   }
 }
 
-// Retrieve links for Hal page
-function getLinksForHalPage(rekapRealisasiSheet, baseReportTitleDropdown, linkColumnName) {
+// Modifikasi fungsi getLinksForHalPage
+function getLinksForHalPage(
+  rekapRealisasiSheet,
+  baseReportTitleDropdown,
+  planId, // Tambahkan parameter planId
+  linkColumnName
+) {
   const allRekapRealisasiData = rekapRealisasiSheet.getDataRange().getValues();
   const rekapRealisasiHeader = allRekapRealisasiData[0];
-  const rekapRealisasiHeaderMap = new Map(rekapRealisasiHeader.map((header, index) => [header, index]));
+  const rekapRealisasiHeaderMap = new Map(
+    rekapRealisasiHeader.map((header, index) => [header, index])
+  );
+
+  // Validasi kolom yang diperlukan
+  const requiredColumns = ['Judul Laporan (A/R)', 'id rencana', linkColumnName];
+  requiredColumns.forEach(column => {
+    if (!rekapRealisasiHeaderMap.has(column)) {
+      throw new Error(`Kolom '${column}' tidak ditemukan di sheet REKAPREALISASI`);
+    }
+  });
+
   const judulLaporanColumnIndex = rekapRealisasiHeaderMap.get('Judul Laporan (A/R)');
+  const idRencanaColumnIndex = rekapRealisasiHeaderMap.get('id rencana');
   const linkColumnIndex = rekapRealisasiHeaderMap.get(linkColumnName);
 
-  if (judulLaporanColumnIndex === undefined) throw new Error("Header 'Judul Laporan (A/R)' not found in 'REKAPREALISASI'.");
-  if (linkColumnIndex === undefined) throw new Error(`Header '${linkColumnName}' not found in 'REKAPREALISASI'.`);
-
-  // Ambil semua baris yang cocok dengan baseReportTitleDropdown
   const matchingRows = allRekapRealisasiData.filter((dataRow, rowIndex) => {
-    if (rowIndex > 0) { // Lewati header
+    if (rowIndex > 0) {
       const reportTitleValue = dataRow[judulLaporanColumnIndex].toString().trim();
-      return reportTitleValue === baseReportTitleDropdown;
+      const idRencanaValue = dataRow[idRencanaColumnIndex].toString().trim();
+      return (
+        reportTitleValue === baseReportTitleDropdown &&
+        idRencanaValue === planId // Filter tambahan untuk ID Rencana
+      );
     }
     return false;
   });
 
-  // Kumpulkan semua link dari kolom linkColumnName di baris yang cocok
   const links = matchingRows
-    .flatMap(row => (row[linkColumnIndex] || '').toString().split(',')) // Pisahkan link per baris
-    .map(link => link.trim()) // Hapus spasi
-    .filter(link => link !== ''); // Hapus entri kosong
+    .flatMap(row => (row[linkColumnIndex] || '').toString().split(','))
+    .map(link => link.trim())
+    .filter(link => link !== '');
 
-  // Kembalikan links dan matchingRows (untuk kompatibilitas dengan kode asli)
-  return { links, filteredRekapRealisasiRow: matchingRows.length > 0 ? matchingRows[0] : null };
+  return {
+    links,
+    filteredRekapRealisasiRow: matchingRows.length > 0 ? matchingRows[0] : null
+  };
 }
 
 // Apply basic updates to template sheet
@@ -221,7 +296,7 @@ function applyBasicTemplateUpdates(targetSheet, reportData, planId, dataSheet, h
 // Retrieve requestor position from data sheet
 function getRequestorPosition(dataSheet, headerColumnIndexMap, requestorName) {
   const allData = dataSheet.getDataRange().getValues();
-  for (let i = 3; i < allData.length; i++) {
+  for (let i = 5; i < allData.length; i++) {
     const requestorNameSheet = allData[i][headerColumnIndexMap.get('Nama Pemohon')];
     if (requestorNameSheet && requestorNameSheet.toString().trim() === requestorName.trim()) {
       return (allData[i][5] || '').toString().trim();
@@ -325,7 +400,7 @@ function getTotalNominalPermohonan(planId) {
     return rencanaRow ? (rencanaRow[NOMINAL_PERMOHONAN_COLUMN_INDEX_RENCANA] || 0) : 0;
   } catch (error) {
     Logger.log(`Error fetching Total Nominal Permohonan: ${error.message}`);
-    throw error; // Re-throw to ensure errors are not silently ignored
+    throw error;
   }
 }
 
@@ -353,7 +428,7 @@ function generateAndSavePdfReport(reportSheet, reportTitleDropdown, mainReportDa
   const pdfFolder = DriveApp.getFolderById(PDF_FOLDER_ID);
 
   reportSheet.activate();
-  SpreadsheetApp.flush(); // Removed unnecessary sleep
+  SpreadsheetApp.flush();
 
   const pdfExportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.getId()}/export?` +
     `format=pdf&size=A4&portrait=true&fitw=true&gid=${reportSheet.getSheetId()}`;
@@ -389,10 +464,8 @@ function processTemplatePagesForHal(templateSheet, links, pageNameSuffix, spread
   if (existingSheet) spreadsheet.deleteSheet(existingSheet);
   const newSheet = templateSheet.copyTo(spreadsheet).setName(newSheetName);
 
-  // Hitung jumlah baris yang diperlukan untuk gambar (2 gambar per baris)
   const numImageRows = Math.ceil(links.length / 2);
 
-  // Atur tinggi baris mulai dari baris 8 sebanyak numImageRows menjadi 400 piksel
   for (let i = 0; i < numImageRows; i++) {
     newSheet.setRowHeight(8 + i, 400);
   }
@@ -405,13 +478,9 @@ function processTemplatePagesForHal(templateSheet, links, pageNameSuffix, spread
     const targetColumn = currentColumnIndex === 1 ? 2 : 10;
 
     try {
-      // Sisipkan gambar dan atur ukurannya menjadi 400x400 piksel
       const image = newSheet.insertImage(imageUrl, targetColumn, currentRow);
       image.setWidth(390).setHeight(390);
-
-      // Opsional: Sesuaikan posisi gambar agar lebih presisi (jika diperlukan)
-      // Misalnya, geser sedikit ke kanan atau ke bawah dalam sel
-      image.setAnchorCell(targetColumn, currentRow); // Pastikan anchor tetap di sel target
+      image.setAnchorCell(targetColumn, currentRow);
     } catch (error) {
       Logger.log(`Error inserting image from URL ${imageUrl}: ${error.message}`);
     }
@@ -420,12 +489,11 @@ function processTemplatePagesForHal(templateSheet, links, pageNameSuffix, spread
     if (currentColumnIndex === 1) currentRow++;
   });
 
-  // Sembunyikan baris di bawah gambar terakhir
-  const lastImageRow = currentRow; // Baris terakhir tempat gambar ditempatkan
-  const maxRows = newSheet.getMaxRows(); // Jumlah total baris di sheet
+  const lastImageRow = currentRow;
+  const maxRows = newSheet.getMaxRows();
   if (lastImageRow < maxRows) {
-    const rowsToHide = maxRows - lastImageRow; // Jumlah baris yang akan disembunyikan
-    newSheet.hideRows(lastImageRow + 1, rowsToHide); // Sembunyikan dari baris setelah lastImageRow hingga akhir
+    const rowsToHide = maxRows - lastImageRow;
+    newSheet.hideRows(lastImageRow + 1, rowsToHide);
   }
 
   const dummyMainReportData = {
@@ -451,8 +519,8 @@ function convertDriveLinkToImageUrl(driveLink) {
 function updatePdfLinks(spreadsheet, pdfFileHal1, pdfFileHal2, pdfFileHal3) {
   const dataSheet = spreadsheet.getSheetByName('GENERATEPDF');
   updatePdfLink(dataSheet, 'B2', pdfFileHal1);
-  updatePdfLink(dataSheet, 'E2', pdfFileHal2);
-  updatePdfLink(dataSheet, 'F2', pdfFileHal3);
+  updatePdfLink(dataSheet, 'B3', pdfFileHal2);
+  updatePdfLink(dataSheet, 'B4', pdfFileHal3);
 }
 
 // Update single PDF link
@@ -519,7 +587,7 @@ function convertIndonesianDateToYyyyMmDd(indonesianDateStr) {
 // Initialize menu on spreadsheet open
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('GeneratePDF ✨📄')
-    .addItem('Generate PDF 📄⬇️ ', 'generatePdfReportFromDropdown')
+    .createMenu('GeneratePDF 📄')
+    .addItem('Generate PDF 📄🔍', 'generatePdfReportFromDropdown')
     .addToUi();
 }
